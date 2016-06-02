@@ -1,3 +1,5 @@
+from django.db.models.fields.files import FieldFile
+
 VERSION = (0, 3, 10)
 __version__ = '.'.join(map(str, VERSION))
 
@@ -8,13 +10,16 @@ import unicodedata
 
 def _lazy_load(fn):
     _cached = []
+
     def _decorated():
         if not _cached:
             _cached.append(fn())
         return _cached[0]
+
     def clear():
         while _cached:
             _cached.pop()
+
     _decorated.clear = clear
     return _decorated
 
@@ -29,11 +34,11 @@ def _get_sendfile():
     from django.core.exceptions import ImproperlyConfigured
 
     backend = getattr(settings, 'SENDFILE_BACKEND', None)
+
     if not backend:
         raise ImproperlyConfigured('You must specify a value for SENDFILE_BACKEND')
     module = import_module(backend)
     return module.sendfile
-
 
 
 def sendfile(request, filename, attachment=False, attachment_filename=None, mimetype=None, encoding=None):
@@ -53,21 +58,30 @@ def sendfile(request, filename, attachment=False, attachment_filename=None, mime
     filename (using the standard python mimetypes module)
     '''
     _sendfile = _get_sendfile()
+    remote_storage = False
 
     if not os.path.exists(filename):
         from django.http import Http404
         raise Http404('"%s" does not exist' % filename)
+    else:
+        remote_storage = True
 
-    guessed_mimetype, guessed_encoding = guess_type(filename)
-    if mimetype is None:
-        if guessed_mimetype:
-            mimetype = guessed_mimetype
-        else:
-            mimetype = 'application/octet-stream'
-        
-    response = _sendfile(request, filename, mimetype=mimetype)
+    if not remote_storage:
+        # In case it is a remote storage we are not checking explicitly if the file exists
+        # to safe an additional request. In such a case the remote backend will send a 404
+        # which will be redirected back to the client.
+
+        guessed_mimetype, guessed_encoding = guess_type(filename)
+        if mimetype is None:
+            if guessed_mimetype:
+                mimetype = guessed_mimetype
+            else:
+                mimetype = 'application/octet-stream'
+
+    response = _sendfile(request, filename, remote_storage=remote_storage, mimetype=mimetype)
     if attachment:
         if attachment_filename is None:
+            # This will also work with URLs from a remote storage, so will be left untouched.
             attachment_filename = os.path.basename(filename)
         parts = ['attachment']
         if attachment_filename:
@@ -77,7 +91,7 @@ def sendfile(request, filename, attachment=False, attachment_filename=None, mime
                 # Django 1.3
                 from django.utils.encoding import force_unicode as force_text
             attachment_filename = force_text(attachment_filename)
-            ascii_filename = unicodedata.normalize('NFKD', attachment_filename).encode('ascii','ignore') 
+            ascii_filename = unicodedata.normalize('NFKD', attachment_filename).encode('ascii', 'ignore')
             parts.append('filename="%s"' % ascii_filename)
             if ascii_filename != attachment_filename:
                 from django.utils.http import urlquote
@@ -85,11 +99,12 @@ def sendfile(request, filename, attachment=False, attachment_filename=None, mime
                 parts.append('filename*=UTF-8\'\'%s' % quoted_filename)
         response['Content-Disposition'] = '; '.join(parts)
 
-    response['Content-length'] = os.path.getsize(filename)
-    response['Content-Type'] = mimetype
-    if not encoding:
-        encoding = guessed_encoding
-    if encoding:
-        response['Content-Encoding'] = encoding
+    if not remote_storage:
+        response['Content-length'] = os.path.getsize(filename)
+        response['Content-Type'] = mimetype
+        if not encoding:
+            encoding = guessed_encoding
+        if encoding:
+            response['Content-Encoding'] = encoding
 
     return response

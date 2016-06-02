@@ -7,22 +7,28 @@ except ImportError:
     from email.Utils import parsedate_tz, mktime_tz
 
 from django.core.files.base import File
-from django.http import HttpResponse, HttpResponseNotModified
+from django.http import HttpResponse, HttpResponseNotModified, HttpResponseRedirect
 from django.utils.http import http_date
 
 
 def sendfile(request, filename, **kwargs):
-    # Respect the If-Modified-Since header.
-    statobj = os.stat(filename)
+    remote_storage = kwargs.get('remote_storage', False)
 
-    if not was_modified_since(request.META.get('HTTP_IF_MODIFIED_SINCE'),
-                              statobj[stat.ST_MTIME], statobj[stat.ST_SIZE]):
-        return HttpResponseNotModified()
+    if remote_storage:
+        response = HttpResponseRedirect(filename)
+    else:
+        # Respect the If-Modified-Since header.
+        statobj = os.stat(filename)
 
-    with File(open(filename, 'rb')) as f:
-        response = HttpResponse(f.chunks())
+        if not was_modified_since(request.META.get('HTTP_IF_MODIFIED_SINCE'),
+                                  statobj[stat.ST_MTIME], statobj[stat.ST_SIZE]):
+            return HttpResponseNotModified()
 
-    response["Last-Modified"] = http_date(statobj[stat.ST_MTIME])
+        with File(open(filename, 'rb')) as f:
+            response = HttpResponse(f.chunks())
+
+        response["Last-Modified"] = http_date(statobj[stat.ST_MTIME])
+
     return response
 
 
