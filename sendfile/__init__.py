@@ -60,7 +60,14 @@ def sendfile(request, filename, attachment=False, attachment_filename=None, mime
     _sendfile = _get_sendfile()
     remote_storage = False
 
-    if not os.path.exists(filename):
+    if isinstance(filename, FieldFile):
+        try:
+            filename = filename.path
+        except NotImplementedError:
+            filename = filename.url
+            remote_storage = True
+
+    if not remote_storage and not os.path.exists(filename):
         from django.http import Http404
         raise Http404('"%s" does not exist' % filename)
     else:
