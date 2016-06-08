@@ -1,3 +1,5 @@
+import urlparse
+
 from django.db.models.fields.files import FieldFile
 
 VERSION = (0, 3, 10)
@@ -41,6 +43,26 @@ def _get_sendfile():
     return module.sendfile
 
 
+def normalize_filename(filename):
+    """
+    Filename is always a string (path or url)
+    """
+    if isinstance(filename, FieldFile):
+        try:
+            filename = filename.path
+        except NotImplementedError:
+            filename = filename.url
+    return filename
+
+
+def is_remote_storage(filename):
+    """
+    Recognises whether application uses remote or local storage
+    """
+    parts = urlparse.urlsplit(filename)
+    return parts.netloc or parts.scheme
+
+
 def sendfile(request, filename, attachment=False, attachment_filename=None, mimetype=None, encoding=None):
     '''
     create a response to send file using backend configured in SENDFILE_BACKEND
@@ -58,25 +80,17 @@ def sendfile(request, filename, attachment=False, attachment_filename=None, mime
     filename (using the standard python mimetypes module)
     '''
     _sendfile = _get_sendfile()
-    remote_storage = False
-
-    if isinstance(filename, FieldFile):
-        try:
-            filename = filename.path
-        except NotImplementedError:
-            filename = filename.url
-            remote_storage = True
-
-    if not remote_storage and not os.path.exists(filename):
-        from django.http import Http404
-        raise Http404('"%s" does not exist' % filename)
-    else:
-        remote_storage = True
+    filename = normalize_filename(filename)
+    remote_storage = is_remote_storage(filename)
 
     if not remote_storage:
         # In case it is a remote storage we are not checking explicitly if the file exists
-        # to safe an additional request. In such a case the remote backend will send a 404
+        # to save an additional request. In such a case the remote backend will send a 404
         # which will be redirected back to the client.
+
+        if not os.path.exists(filename):
+            from django.http import Http404
+            raise Http404('"%s" does not exist' % filename)
 
         guessed_mimetype, guessed_encoding = guess_type(filename)
         if mimetype is None:
@@ -88,7 +102,7 @@ def sendfile(request, filename, attachment=False, attachment_filename=None, mime
     response = _sendfile(request, filename, remote_storage=remote_storage, mimetype=mimetype)
     if attachment:
         if attachment_filename is None:
-            # This will also work with URLs from a remote storage, so will be left untouched.
+            # This also work with URLs from a remote storage, so will be left untouched.
             attachment_filename = os.path.basename(filename)
         parts = ['attachment']
         if attachment_filename:

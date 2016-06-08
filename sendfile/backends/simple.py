@@ -1,6 +1,7 @@
 import os
 import stat
 import re
+
 try:
     from email.utils import parsedate_tz, mktime_tz
 except ImportError:
@@ -15,7 +16,7 @@ def sendfile(request, filename, **kwargs):
     remote_storage = kwargs.get('remote_storage', False)
 
     if remote_storage:
-        response = HttpResponseRedirect(filename)
+        return HttpResponseRedirect(filename)
     else:
         # Respect the If-Modified-Since header.
         statobj = os.stat(filename)
