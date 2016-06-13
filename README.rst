@@ -2,7 +2,7 @@
 Django Sendfile
 ===============
 
-This is a wrapper around web-server specific methods for sending files to web clients.  This is useful when Django needs to check permissions associated files, but does not want to serve the actual bytes of the file itself.  i.e. as serving large files is not what Django is made for.
+This is a wrapper around web-server specific methods for sending files to web clients. This is useful when Django needs to check permissions associated files, but does not want to serve the actual bytes of the file itself.  i.e. as serving large files is not what Django is made for.
 
 Note this should not be used for regular file serving (e.g. css etc), only for cases where you need Django to do some work before serving the actual file.
 
@@ -21,6 +21,11 @@ The interface is a single function `sendfile(request, filename, attachment=False
     # send myfile.pdf as an attachment with a different name
     return sendfile(request, '/home/john/myfile.pdf', attachment=True, attachment_filename='full-name.pdf')
 
+    # send myfile.pdf from a remote storage
+    return sendfile(request, 'https://bucket.s3.amazonaws.com/media/myfile.pdf')
+
+    # send FieldFile instance with a different name transparently independent from current default storage backend
+    return sendfile(request, user.profile.avatar, attachement=True, attachment_filename='username.jpg')
 
 
 Backends are specified using the setting `SENDFILE_BACKEND`.  Currenly available backends are:
@@ -49,10 +54,14 @@ The Development backend is only meant for use while writing code.  It uses Djang
 
 It will work with the Django dev server and anywhere else you can run Django.
 
+In case you have changed your default storage backend to a remote backend, a redirect will be performed instead of using Django's static file serving.
+
 Simple backend
 ==============
 
 This backend is one step up from the development backend.  It uses Django's `django.core.files.base.File` class to try and stream files from disk.  However some middleware (e.g. GzipMiddleware) that rewrites content will causes the entire file to be loaded into memory.  So only use this backend if you are not using middleware that rewrites content or you only have very small files.
+
+An exception in this behavior will be when using a remote backend as default storage, in such a case a redirect will be perfomed.
 
 
 xsendfile backend
@@ -132,10 +141,18 @@ Then the matching location block in nginx.conf would be:
       root   /home/john/Development/django-sendfile/examples/protected_downloads;
     }
 
-You need to pay attention to whether you have trailing slashes or not on the SENDFILE_URL and root values, otherwise you may not get the right URL being sent to NGINX and you may get 404s.  You should be able to see what file NGINX is trying to load in the error.log if this happens.  From there it should be fairly easy to work out what the right settings are.
+In case you are using a remote storage backend the location block in nginx.conf will look something like this:
+
+::
+
+    location /protected/(.*) {
+        internal;
+        proxy_pass $1$is_args$args;
+    }
+
+You need to pay attention to whether you have trailing slashes or not on the SENDFILE_URL and root values, otherwise you may not get the right URL being sent to NGINX and you may get 404s.  You should be able to see what file NGINX is trying to load in the error.log if this happens. From there it should be fairly easy to work out what the right settings are.
 
 .. _mod_xsendfile: https://tn123.org/mod_xsendfile/
 .. _Apache: http://httpd.apache.org/
 .. _Lighthttpd: http://www.lighttpd.net/
 .. _mod_wsgi: http://code.google.com/p/modwsgi/
-
