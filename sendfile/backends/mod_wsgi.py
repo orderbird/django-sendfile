@@ -6,8 +6,9 @@ from ._internalredirect import _convert_file_to_url
 
 
 def sendfile(request, filename, **kwargs):
+    remote_storage = kwargs.get('remote_storage', False)
     response = HttpResponse()
-    response['Location'] = _convert_file_to_url(filename)
+    response['Location'] = _convert_file_to_url(filename, remote_storage)
     # need to destroy get_host() to stop django
     # rewriting our location to include http, so that
     # mod_wsgi is able to do the internal redirect
