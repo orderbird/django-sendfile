@@ -1,7 +1,5 @@
 import urlparse
 
-from django.db.models.fields.files import FieldFile
-
 VERSION = (0, 3, 10)
 __version__ = '.'.join(map(str, VERSION))
 
@@ -47,6 +45,7 @@ def normalize_filename(filename):
     """
     Filename is always a string (path or url)
     """
+    from django.db.models.fields.files import FieldFile
     if isinstance(filename, FieldFile):
         try:
             filename = filename.path
